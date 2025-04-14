@@ -11,4 +11,5 @@ Este es un proyecto de **Backend** que implementa WebSockets utilizando **Node.j
 2. **Instala dependencias**
 npm install
 3. **Inicializa el servidor**
-node src/server.js
+node src/server.js o npm start
+
