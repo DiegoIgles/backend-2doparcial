@@ -10,6 +10,12 @@ Este es un proyecto de **Backend** que implementa WebSockets utilizando **Node.j
    git clone https://github.com/DiegoIgles/backend-sockets.git
 2. **Instala dependencias**
 npm install
-3. **Inicializa el servidor**
-node src/server.js o npm start
+
+3. **Inicia XAMPP:**
+
+ debes asegurarte de que XAMPP esté en ejecución. Para esto, abre el panel de control de XAMPP y enciende MySQL.
+Si MySQL no está activo, tu aplicación no podrá conectarse a la base de datos.
+
+4. **Inicializa el servidor**
+ npm start
 
