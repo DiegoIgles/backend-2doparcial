@@ -50,7 +50,11 @@ User.belongsTo(ProyectoClase, { foreignKey: 'proyectoClaseId' });
 
 // Sincronizar la base de datos y luego iniciar el servidor
 sequelize.sync({ force: false })
-  .then(() => {
+.then(async () => { // 
+    // Ejecutar seeders después de sincronizar
+   
+    const seedAdminUser = require('./seeders/20250404043208-demo-admin-user');
+    await seedAdminUser.up(sequelize.getQueryInterface(), sequelize.constructor); // 👈 ahora sí puedes usar await aquí
     const PORT = process.env.PORT || 4000; // 👈 Aquí el cambio importante
     server.listen(PORT, () => {
       console.log(`🚀 Servidor iniciado en puerto ${PORT}`);
