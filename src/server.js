@@ -53,7 +53,7 @@ User.belongsTo(ProyectoClase, { foreignKey: 'proyectoClaseId' });
 // Función para ejecutar el seeder
 const runSeeder = async () => {
   try {
-    const seeder = require('../seeders/20250404043208-demo-admin-user'); // Ajusta la ruta según corresponda
+    const seeder = require('./seeders/20250404043208-demo-admin-user'); // Ajusta la ruta según corresponda
     await seeder.up(sequelize.getQueryInterface(), sequelize.Sequelize);
     console.log('✅ Seeder ejecutado correctamente.');
   } catch (error) {

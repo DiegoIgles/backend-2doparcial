@@ -1,6 +1,6 @@
 const bcrypt = require('bcrypt');
 const path = require('path'); // Agregar esta línea para importar el módulo path
-const { User } = require(path.resolve(__dirname, 'src', 'models')); // Ajustamos la ruta utilizando path.resolve
+const { User } = require('../models'); // Ajustamos la ruta utilizando path.resolve
 
 module.exports = {
   async up(queryInterface, Sequelize) {
