@@ -8,7 +8,6 @@ const userRoutes = require('./routes/userRoutes');
 const sequelize = require('./config/database');
 const projectRoutes = require('./routes/ProjectRoutes');
 const proyectoClaseRoutes = require('./routes/proyectoClase');
-const seedAdminUser = require('../seeders/20250404043208-demo-admin-user');  // IMPORTA EL SEEDER AQUÍ
 
 const ProyectoUI = require('./models/ProyectoUI');
 const User = require('./models/user');
@@ -51,9 +50,8 @@ User.belongsTo(ProyectoClase, { foreignKey: 'proyectoClaseId' });
 
 // Sincronizar la base de datos y luego iniciar el servidor
 sequelize.sync({ force: false })
-.then(async () => { // 
-    // Ejecutar seeders después de sincronizar 
-    await seedAdminUser.up();  // Ejecuta el seeder
+  .then(() => {
+    
     const PORT = process.env.PORT || 4000; // 👈 Aquí el cambio importante
     server.listen(PORT, () => {
       console.log(`🚀 Servidor iniciado en puerto ${PORT}`);
