@@ -1,5 +1,5 @@
 const bcrypt = require('bcrypt');
-const { User } = require('../src/models/user');
+const { User } = require('../src/models');
 
 module.exports = {
   async up(queryInterface, Sequelize) {
