@@ -1,10 +1,16 @@
 // src/config/database.js
 const { Sequelize } = require('sequelize');
 
-// Aquí debes poner tus datos correctos para la base de datos
-const sequelize = new Sequelize('cisistem_primer_parcial_sw1', 'cisistem_sistemas', 'sistemas2025$', {
-  host: 'cisistemasficct.com', // O la dirección de tu base de datos
-  dialect: 'mysql', // O el tipo de base de datos que estés usando ('postgres', 'sqlite', etc.)
-});
+// Usar variables de entorno para mayor seguridad y flexibilidad
+const sequelize = new Sequelize(
+  process.env.DB_NAME,       // Nombre de la base de datos
+  process.env.DB_USER,       // Usuario
+  process.env.DB_PASSWORD,   // Contraseña
+  {
+    host: process.env.DB_HOST, // Host
+    dialect: 'mysql',
+    logging: false,           // Opcional: para no llenar de logs la consola
+  }
+);
 
 module.exports = sequelize;

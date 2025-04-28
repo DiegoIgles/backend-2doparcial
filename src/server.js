@@ -1,57 +1,61 @@
+require('dotenv').config();
 const cors = require('cors');
 const express = require('express');
 const http = require('http');
-const socketIo = require('socket.io'); // Asegúrate de tener esta importación
+const socketIo = require('socket.io');
 const socketHandler = require('./sockets/socketHandler');
 const userRoutes = require('./routes/userRoutes');
 const sequelize = require('./config/database');
 const projectRoutes = require('./routes/ProjectRoutes');
-const proyectoClaseRoutes = require('./routes/proyectoClase'); // Importamos las rutas de ProyectoClase
+const proyectoClaseRoutes = require('./routes/proyectoClase');
 
-// Importar los modelos
 const ProyectoUI = require('./models/ProyectoUI');
 const User = require('./models/user');
 const ProyectoClase = require('./models/ProyectoClase');
 
 const app = express();
 const server = http.createServer(app);
+console.log(process.env.DB_HOST);  // Asegúrate de que esté mostrando "yamabiko.proxy.rlwy.net"
+console.log(process.env.DB_PORT);  // Asegúrate de que esté mostrando "51151"
 
-// Habilitar CORS para permitir solicitudes del frontend
-app.use(cors());
+// Habilitar CORS de forma dinámica
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000', 
+  methods: ['GET', 'POST']
+}));
 
 // Middleware para parsear JSON
 app.use(express.json());
 
 // Definir las rutas de la API
-app.use('/api', userRoutes); // Todas las rutas relacionadas con usuarios estarán bajo /api
+app.use('/api', userRoutes);
 app.use('/api/projects', projectRoutes);
-app.use('/api/proyecto-clase', proyectoClaseRoutes); // Rutas para los proyectos de clase
+app.use('/api/proyecto-clase', proyectoClaseRoutes);
 
 // Conectar los WebSockets
 const io = socketIo(server, {
   cors: {
-    origin: 'http://localhost:3000',  // Permitir conexiones WebSocket desde el frontend
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
     methods: ['GET', 'POST'],
   }
 });
 
 // Conectar el manejo de eventos WebSocket
-socketHandler(io);  // Pasa la instancia de socket.io al manejador de sockets
+socketHandler(io);
 
 // Definir las relaciones entre los modelos
-ProyectoUI.hasMany(User, { foreignKey: 'proyectoId' });  // Un ProyectoUI tiene muchos User
-User.belongsTo(ProyectoUI, { foreignKey: 'proyectoId' });  // Un User pertenece a un ProyectoUI
+ProyectoUI.hasMany(User, { foreignKey: 'proyectoId' });
+User.belongsTo(ProyectoUI, { foreignKey: 'proyectoId' });
 
-
-// Definir las relaciones entre los modelos
-ProyectoClase.hasMany(User, { foreignKey: 'proyectoClaseId' });  // Un ProyectoUI tiene muchos User
-User.belongsTo(ProyectoClase, { foreignKey: 'proyectoClaseId' });  // Un User pertenece a un ProyectoUI
+ProyectoClase.hasMany(User, { foreignKey: 'proyectoClaseId' });
+User.belongsTo(ProyectoClase, { foreignKey: 'proyectoClaseId' });
 
 // Sincronizar la base de datos y luego iniciar el servidor
-sequelize.sync({ force: false })  // Usa force: true para eliminar las tablas y crear de nuevo (en desarrollo)
+sequelize.sync({ force: false })
   .then(() => {
-    server.listen(4000, () => {
-      console.log('🚀 Servidor iniciado en puerto 4000');
+    const PORT = process.env.PORT || 4000; // 👈 Aquí el cambio importante
+    server.listen(PORT, () => {
+      console.log(`🚀 Servidor iniciado en puerto ${PORT}`);
     });
   })
   .catch((error) => {
