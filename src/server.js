@@ -15,8 +15,6 @@ const ProyectoClase = require('./models/ProyectoClase');
 
 const app = express();
 const server = http.createServer(app);
-console.log(process.env.DB_HOST);  // Asegúrate de que esté mostrando "yamabiko.proxy.rlwy.net"
-console.log(process.env.DB_PORT);  // Asegúrate de que esté mostrando "51151"
 
 // Habilitar CORS de forma dinámica
 app.use(cors({
