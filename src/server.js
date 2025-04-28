@@ -9,16 +9,18 @@ const sequelize = require('./config/database');
 const projectRoutes = require('./routes/ProjectRoutes');
 const proyectoClaseRoutes = require('./routes/proyectoClase');
 
+// Modelos
 const ProyectoUI = require('./models/ProyectoUI');
 const User = require('./models/user');
 const ProyectoClase = require('./models/ProyectoClase');
 
+// Crear la app y el servidor
 const app = express();
 const server = http.createServer(app);
 
 // Habilitar CORS de forma dinámica
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000', 
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   methods: ['GET', 'POST']
 }));
 
@@ -48,11 +50,24 @@ User.belongsTo(ProyectoUI, { foreignKey: 'proyectoId' });
 ProyectoClase.hasMany(User, { foreignKey: 'proyectoClaseId' });
 User.belongsTo(ProyectoClase, { foreignKey: 'proyectoClaseId' });
 
+// Función para ejecutar el seeder
+const runSeeder = async () => {
+  try {
+    const seeder = require('../seeders/20250404043208-demo-admin-user'); // Ajusta la ruta según corresponda
+    await seeder.up(sequelize.getQueryInterface(), sequelize.Sequelize);
+    console.log('✅ Seeder ejecutado correctamente.');
+  } catch (error) {
+    console.error('Error al ejecutar el seeder:', error);
+  }
+};
+
 // Sincronizar la base de datos y luego iniciar el servidor
 sequelize.sync({ force: false })
   .then(() => {
-    
-    const PORT = process.env.PORT || 4000; // 👈 Aquí el cambio importante
+    // Ejecutar el seeder después de la sincronización
+    runSeeder();
+
+    const PORT = process.env.PORT || 4000; // Puerto del servidor
     server.listen(PORT, () => {
       console.log(`🚀 Servidor iniciado en puerto ${PORT}`);
     });
