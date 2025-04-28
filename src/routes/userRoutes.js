@@ -65,7 +65,7 @@ router.post('/login', async (req, res) => {
 router.get('/users', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const users = await User.findAll({
-      attributes: ['id', 'username', 'role','proyectoId'], // Solo traeremos los campos necesarios
+      attributes: ['id', 'username', 'role','proyectoId', 'proyectoClaseId'], // Solo traeremos los campos necesarios
     });
     res.json(users); // Devolvemos la lista de usuarios
   } catch (error) {

@@ -1,6 +1,7 @@
 // src/models/User.js
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
+const ProyectoClase = require('./ProyectoClase');  // Importa ProyectoClase correctamente
 
 const User = sequelize.define('User', {
   username: {
@@ -16,6 +17,15 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING,
     defaultValue: 'user',
   },
+  proyectoId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  proyectoClaseId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+
 }, {
   tableName: 'users',
   timestamps: true,
@@ -26,6 +36,8 @@ const User = sequelize.define('User', {
 User.associate = function(models) {
   // Un usuario pertenece a un ProyectoUI
   User.belongsTo(models.ProyectoUI, { foreignKey: 'proyectoId' });
+  // Un usuario también puede estar asociado a un ProyectoClase (relación opcional)
+  User.belongsTo(models.ProyectoClase, { foreignKey: 'proyectoClaseId', as: 'proyectoClase' }); // Usa 'as' para definir un alias
 };
 
 module.exports = User;
