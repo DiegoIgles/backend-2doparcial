@@ -21,7 +21,7 @@ const server = http.createServer(app);
 // Habilitar CORS de forma dinámica
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'https://front-primer-parcial-sw1.vercel.app',
-  methods: ['GET', 'POST']
+  methods: ['GET', 'POST', 'PUT', 'DELETE']
 }));
 
 // Middleware para parsear JSON
@@ -36,7 +36,7 @@ app.use('/api/proyecto-clase', proyectoClaseRoutes);
 const io = socketIo(server, {
   cors: {
     origin: process.env.FRONTEND_URL || 'https://front-primer-parcial-sw1.vercel.app',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    methods: ['GET', 'POST','PUT','DELETE'],
   }
 });
 
