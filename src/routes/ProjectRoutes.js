@@ -1,41 +1,192 @@
 const express = require('express');
 const router = express.Router();
-const { verifyToken, verifyAdmin } = require('../middleware/auth');
+const { verifyToken } = require('../middleware/auth');
 const User = require('../models/user');
 const ProyectoUI = require('../models/ProyectoUI');
+const fs = require('fs');
+const path = require('path');
+const archiver = require('archiver');
+const os = require('os');
 
-// Ruta para asignar un usuario a un proyecto (solo admin)
-router.post('/assign-user', verifyToken, verifyAdmin, async (req, res) => {
-  const { userId, proyectoId } = req.body;
-
+router.post('/create-and-export', verifyToken, async (req, res) => {
   try {
-    const user = await User.findByPk(userId);
-    if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
-
-    const proyecto = await ProyectoUI.findByPk(proyectoId);
-    if (!proyecto) return res.status(404).json({ message: 'Proyecto no encontrado' });
-
-    if (user.proyectoId && user.proyectoId !== proyectoId) {
-      return res.status(400).json({ message: 'El usuario ya está asignado a otro proyecto' });
+    const { nombre, descripcion, pages } = req.body;
+    if (!pages || pages.length === 0) {
+      return res.status(400).json({ error: 'No se enviaron páginas.' });
     }
 
-    user.proyectoId = proyectoId;
-    await user.save();
+    // Crear proyecto en la base de datos
+    const proyecto = await ProyectoUI.create({
+      nombre,
+      descripcion,
+      pagesJson: pages, // 🚀 Guardar el JSON completo
+    });
 
-    res.json({ message: 'Usuario asignado correctamente al proyecto', user });
+    // Generar proyecto Flutter en carpeta temporal
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flutter_project_'));
+    const libDir = path.join(tmpDir, 'lib');
+    fs.mkdirSync(libDir, { recursive: true });
+
+    // Crear un archivo Dart por página y construir rutas
+    const pageRoutes = pages.map((page, index) => {
+      const dartFileName = `page_${index + 1}.dart`;
+      const widgetName = `Page${index + 1}`;
+      const dartCode = generatePageDart(page, widgetName);
+      fs.writeFileSync(path.join(libDir, dartFileName), dartCode);
+      return { widgetName, dartFileName };
+    });
+
+    // Generar main.dart con navegación
+    const mainDartCode = generateMainWithNavigator(pageRoutes);
+    fs.writeFileSync(path.join(libDir, 'main.dart'), mainDartCode);
+
+    // Generar pubspec.yaml
+    const pubspec = `
+name: ${nombre.toLowerCase().replace(/\s/g, '_')}
+description: Proyecto exportado automáticamente
+publish_to: 'none'
+version: 1.0.0+1
+environment:
+  sdk: ">=2.12.0 <3.0.0"
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+flutter:
+  uses-material-design: true
+`;
+    fs.writeFileSync(path.join(tmpDir, 'pubspec.yaml'), pubspec);
+
+    // Crear ZIP del proyecto
+    const zipFilePath = path.join(os.tmpdir(), `${nombre.replace(/\s/g, '_')}.zip`);
+    const output = fs.createWriteStream(zipFilePath);
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.pipe(output);
+    archive.directory(tmpDir, false);
+    await archive.finalize();
+
+    // Guardar Flutter code y ZIP path en DB
+    proyecto.flutterCode = mainDartCode;
+    proyecto.zipPath = zipFilePath;
+    await proyecto.save();
+
+    // Enviar ZIP
+    res.download(zipFilePath, `${nombre || 'flutter_export'}.zip`, (err) => {
+      if (err) console.error('Error al enviar ZIP:', err);
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
   } catch (error) {
-    console.error('Error al asignar usuario:', error);
-    res.status(500).json({ message: 'Error del servidor', error: error.message });
+    console.error('Error al crear/exportar proyecto Flutter:', error);
+    res.status(500).json({ error: 'Error interno', details: error.message });
   }
 });
 
-// ✅ Ruta para que el admin vea todos los proyectos existentes
-router.get('/', verifyToken, verifyAdmin, async (req, res) => {
+// Generar Dart para una página
+function generatePageDart(page, widgetName) {
+  const widgets = (page.components || []).map((comp) => {
+    switch (comp.type) {
+      case 'Container':
+        return `Positioned(left: ${comp.position.x}, top: ${comp.position.y}, child: SizedBox(width: ${comp.size.width}, height: ${comp.size.height}, child: Container(color: ${jsToFlutterColor(comp.style.color)}))),`;
+      case 'Text':
+        return `Positioned(left: ${comp.position.x}, top: ${comp.position.y}, child: Text('${comp.props.text}', style: TextStyle(fontSize: ${comp.props.fontSize || 16}, color: ${jsToFlutterColor(comp.style.color)}))),`;
+      case 'Button':
+        return `Positioned(left: ${comp.position.x}, top: ${comp.position.y}, child: ElevatedButton(onPressed: () {}, child: Text('${comp.props.text || 'Botón'}'))),`;
+      case 'Input':
+        return `Positioned(left: ${comp.position.x}, top: ${comp.position.y}, child: SizedBox(width: ${comp.size.width}, child: TextField(decoration: InputDecoration(hintText: '${comp.props.placeholder || ''}')))),`;
+      case 'Checkbox':
+        return `Positioned(left: ${comp.position.x}, top: ${comp.position.y}, child: Checkbox(value: true, onChanged: (val) {})),`;
+      case 'Navbar':
+        return `PreferredSize(preferredSize: Size.fromHeight(${comp.size.height}), child: AppBar(title: Text('${page.pageName || 'Navbar'}'))),`;
+      default:
+        return '';
+    }
+  }).join('\n');
+
+  return `
+import 'package:flutter/material.dart';
+
+class ${widgetName} extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(children: [
+        ${widgets}
+      ]),
+    );
+  }
+}
+  `;
+}
+
+// Generar main.dart con Navigator
+function generateMainWithNavigator(pageRoutes) {
+  const routes = pageRoutes.map(r => `'/${r.widgetName.toLowerCase()}': (context) => ${r.widgetName}(),`).join('\n');
+  const homeWidget = pageRoutes[0].widgetName;
+
+  const imports = pageRoutes.map(r => `import './${r.dartFileName}';`).join('\n');
+
+  return `
+import 'package:flutter/material.dart';
+${imports}
+
+void main() {
+  runApp(MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      initialRoute: '/${homeWidget.toLowerCase()}',
+      routes: {
+        ${routes}
+      },
+    );
+  }
+}
+  `;
+}
+
+function jsToFlutterColor(jsColor) {
+  if (!jsColor) return 'Colors.black';
+  const hex = jsColor.replace('#', '');
+  return `Color(0xFF${hex.toUpperCase()})`;
+}
+
+
+router.post('/create', verifyToken, async (req, res) => {
   try {
-    const proyectos = await ProyectoUI.findAll({
-      attributes: ['id', 'nombre', 'descripcion', 'createdAt']
+    const { nombre, descripcion, pagesJson } = req.body;
+    if (!pagesJson || pagesJson.length === 0) {
+      return res.status(400).json({ error: 'No se enviaron páginas.' });
+    }
+
+    // Crear el proyecto en la base de datos
+    const proyecto = await ProyectoUI.create({
+      nombre,
+      descripcion,
+      pagesJson,
     });
 
+    res.status(201).json({
+      message: 'Proyecto guardado exitosamente.',
+      proyecto,
+    });
+  } catch (error) {
+    console.error('Error al crear proyecto:', error);
+    res.status(500).json({ error: 'Error interno', details: error.message });
+  }
+});
+// 🚀 GET: Obtener todos los proyectos
+router.get('/', verifyToken, async (req, res) => {
+  try {
+    const proyectos = await ProyectoUI.findAll({
+      attributes: ['id', 'nombre', 'descripcion', 'createdAt'],
+    });
     res.status(200).json(proyectos);
   } catch (error) {
     console.error('Error al obtener proyectos:', error);
@@ -43,117 +194,187 @@ router.get('/', verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
-// ✅ Ruta para crear un nuevo ProyectoUI (solo admin)
-router.post('/create', verifyToken, verifyAdmin, async (req, res) => {
-  const { nombre, descripcion, fabricJson } = req.body;
-
+// 🚀 POST: Asignar proyecto a usuario
+router.post('/assign-user', verifyToken, async (req, res) => {
   try {
-    const nuevoProyecto = await ProyectoUI.create({
-      nombre,
-      descripcion,
-      fabricJson,
-    });
+    const { userId, proyectoId } = req.body;
+    const user = await User.findByPk(userId);
+    if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
 
-    res.status(201).json({
-      message: 'ProyectoUI creado con éxito',
-      nuevoProyecto,
-    });
+    const proyecto = await ProyectoUI.findByPk(proyectoId);
+    if (!proyecto) return res.status(404).json({ message: 'Proyecto no encontrado' });
+
+    user.proyectoId = proyectoId;
+    await user.save();
+
+    res.json({ message: 'Usuario asignado al proyecto correctamente', user });
   } catch (error) {
-    console.error('Error al crear ProyectoUI:', error);
-    res.status(500).json({ message: 'Error al crear ProyectoUI', error: error.message });
+    console.error('Error al asignar usuario:', error);
+    res.status(500).json({ message: 'Error interno', details: error.message });
   }
 });
 
-// Ruta para obtener el proyecto al que un usuario está asignado (sin verificar token)
+// 🚀 GET: Proyecto asignado a un usuario
 router.get('/assigned-project/:userId', async (req, res) => {
-  const { userId } = req.params; // Obtener el userId de los parámetros de la URL
-
+  const { userId } = req.params;
   try {
     const user = await User.findByPk(userId, {
       include: {
-        model: ProyectoUI,  // Incluir los detalles del proyecto relacionado
-        attributes: ['id', 'nombre', 'descripcion'],  // Los atributos del proyecto que queremos devolver
+        model: ProyectoUI,
+        attributes: ['id', 'nombre', 'descripcion', 'pagesJson'],  // 🔥 Añadir pagesJson
       },
     });
+    if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
+    if (!user.proyectoId) return res.status(404).json({ message: 'Usuario no tiene proyecto asignado' });
 
-    if (!user) {
-      return res.status(404).json({ message: 'Usuario no encontrado' });
-    }
-
-    if (!user.proyectoId) {
-      return res.status(404).json({ message: 'El usuario no está asignado a ningún proyecto' });
-    }
-
-    // Si el usuario tiene asignado un proyecto, devolver la información del proyecto
-    res.json({
-      message: 'Proyecto asignado encontrado',
-      proyecto: user.ProyectoUI, // La información del proyecto asignado al usuario
-    });
+    res.json({ proyecto: user.ProyectoUI });
   } catch (error) {
-    console.error('Error al obtener el proyecto asignado:', error);
-    res.status(500).json({ message: 'Error al obtener el proyecto asignado', error: error.message });
+    console.error('Error al obtener proyecto asignado:', error);
+    res.status(500).json({ message: 'Error interno', details: error.message });
   }
 });
-// Nueva ruta para obtener el proyecto por su ID (para cargarlo en el editor)
-router.get('/edit-ui/:id', async (req, res) => {
-  const { id } = req.params; // Obtener el ID del proyecto de los parámetros de la URL
 
+
+// 🚀 GET: Editar proyecto por ID (devolver pagesJson)
+router.get('/edit-ui/:id', verifyToken, async (req, res) => {
   try {
-    const proyecto = await ProyectoUI.findByPk(id);
+    const proyecto = await ProyectoUI.findByPk(req.params.id);
     if (!proyecto) {
       return res.status(404).json({ message: 'Proyecto no encontrado' });
     }
 
-    // Devolver el proyecto con sus detalles, incluyendo el JSON de la interfaz (fabricJson)
-    res.json({
-      message: 'Proyecto encontrado',
-      proyecto,
-    });
+    // Parsear pagesJson si es string
+    let pagesJson = proyecto.pagesJson;
+    if (typeof pagesJson === 'string') {
+      try {
+        pagesJson = JSON.parse(pagesJson);
+      } catch (error) {
+        console.warn('No se pudo parsear pagesJson, creando arreglo vacío');
+        pagesJson = [];
+      }
+    }
+
+    // Si es null o undefined, inicializar
+    if (!Array.isArray(pagesJson)) {
+      pagesJson = [];
+    }
+
+    res.json({ proyecto: { ...proyecto.toJSON(), pagesJson } });
   } catch (error) {
-    console.error('Error al obtener el proyecto por ID:', error);
-    res.status(500).json({ message: 'Error al obtener el proyecto', error: error.message });
+    console.error('Error al obtener el proyecto:', error);
+    res.status(500).json({ message: 'Error interno', details: error.message });
   }
 });
 
-router.put('/update/:id', async (req, res) => {
-  const { id } = req.params;
-  const { fabricJson } = req.body;
 
+// 🚀 PUT: Actualizar proyecto por ID con pagesJson
+router.put('/update/:id', verifyToken, async (req, res) => {
   try {
-    const proyecto = await ProyectoUI.findByPk(id);
+    const { pagesJson } = req.body;
+    if (!pagesJson || pagesJson.length === 0) {
+      return res.status(400).json({ message: 'No se enviaron páginas.' });
+    }
+
+    const proyecto = await ProyectoUI.findByPk(req.params.id);
     if (!proyecto) return res.status(404).json({ message: 'Proyecto no encontrado' });
 
-    // Actualizar el JSON del canvas
-    proyecto.fabricJson = fabricJson;
+    proyecto.pagesJson = pagesJson;
     await proyecto.save();
 
-    res.status(200).json({ message: 'Proyecto actualizado correctamente', proyecto });
+    res.json({ message: 'Proyecto actualizado correctamente', proyecto });
   } catch (error) {
-    console.error('Error al actualizar el proyecto:', error);
-    res.status(500).json({ message: 'Error al actualizar el proyecto', error: error.message });
+    console.error('Error al actualizar proyecto:', error);
+    res.status(500).json({ message: 'Error interno', details: error.message });
   }
 });
 
-// Ruta para desasignar usuarios y eliminar un proyecto (solo admin)
-router.delete('/delete/:id', verifyToken, verifyAdmin, async (req, res) => {
-  const { id } = req.params;
-
+// 🚀 GET: Exportar Flutter para un proyecto existente
+router.get('/export-flutter/:id', verifyToken, async (req, res) => {
   try {
+    const { id } = req.params;
     const proyecto = await ProyectoUI.findByPk(id);
-    if (!proyecto) {
-      return res.status(404).json({ message: 'Proyecto no encontrado' });
+
+    if (!proyecto) return res.status(404).json({ error: 'Proyecto no encontrado' });
+
+    let pagesJson = proyecto.pagesJson;
+    if (typeof pagesJson === 'string') {
+      pagesJson = JSON.parse(pagesJson);
     }
 
-    // Desasignar todos los usuarios asociados a este proyecto
-    await User.update({ proyectoId: null }, { where: { proyectoId: id } });
+    // 🏗 Generar ZIP en stream
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flutter_project_'));
+    const libDir = path.join(tmpDir, 'lib');
+    fs.mkdirSync(libDir, { recursive: true });
 
-    // Eliminar el proyecto
+    const pageRoutes = pagesJson.map((page, index) => {
+      const dartFileName = `page_${index + 1}.dart`;
+      const widgetName = `Page${index + 1}`;
+      const dartCode = generatePageDart(page, widgetName);
+      fs.writeFileSync(path.join(libDir, dartFileName), dartCode);
+      return { widgetName, dartFileName };
+    });
+
+    const mainDartCode = generateMainWithNavigator(pageRoutes);
+    fs.writeFileSync(path.join(libDir, 'main.dart'), mainDartCode);
+
+    const pubspec = `
+name: ${proyecto.nombre.toLowerCase().replace(/\s/g, '_')}
+description: Proyecto exportado automáticamente
+publish_to: 'none'
+version: 1.0.0+1
+environment:
+  sdk: ">=2.12.0 <3.0.0"
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+flutter:
+  uses-material-design: true
+`;
+    fs.writeFileSync(path.join(tmpDir, 'pubspec.yaml'), pubspec);
+
+    // ✅ Generar ZIP en stream directamente a la respuesta
+    res.setHeader('Content-Disposition', `attachment; filename=${proyecto.nombre.replace(/\s/g, '_')}.zip`);
+    res.setHeader('Content-Type', 'application/zip');
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.directory(tmpDir, false);
+    archive.pipe(res);
+
+    archive.finalize();
+
+    // 🧹 Limpiar después de enviar
+    archive.on('end', () => {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+  } catch (error) {
+    console.error('Error al exportar proyecto Flutter:', error);
+    res.status(500).json({ error: 'Error al exportar proyecto Flutter', details: error.message });
+  }
+});
+// 🚀 DELETE: Eliminar proyecto por ID
+router.delete('/delete/:id', verifyToken, async (req, res) => {
+  try {
+    const proyecto = await ProyectoUI.findByPk(req.params.id);
+    if (!proyecto) return res.status(404).json({ message: 'Proyecto no encontrado' });
+
+    // 🚨 Opcional: Desasignar usuarios vinculados a este proyecto
+    const users = await User.findAll({ where: { proyectoId: proyecto.id } });
+    for (const user of users) {
+      user.proyectoId = null;
+      await user.save();
+    }
+
     await proyecto.destroy();
 
-    res.status(200).json({ message: 'Proyecto desasignado y eliminado correctamente' });
+    res.json({ message: 'Proyecto eliminado exitosamente' });
   } catch (error) {
-    console.error('Error al eliminar el proyecto:', error);
-    res.status(500).json({ message: 'Error al eliminar el proyecto', error: error.message });
+    console.error('Error al eliminar proyecto:', error);
+    res.status(500).json({ message: 'Error interno', details: error.message });
   }
 });
 

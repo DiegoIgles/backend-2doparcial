@@ -1,4 +1,3 @@
-// src/models/ProyectoUI.js
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
@@ -16,8 +15,20 @@ const ProyectoUI = sequelize.define('ProyectoUI', {
     type: DataTypes.TEXT,
     allowNull: true,
   },
-  fabricJson: {
+  fabricJson: {  // (opcional, puedes eliminarlo si ya no lo necesitas)
     type: DataTypes.JSON,
+    allowNull: true,
+  },
+  pagesJson: {   // 🚀 NUEVO: JSON completo de todas las pantallas
+    type: DataTypes.JSON,
+    allowNull: true,
+  },
+  flutterCode: {
+    type: DataTypes.TEXT('long'),
+    allowNull: true,
+  },
+  zipPath: {
+    type: DataTypes.STRING,
     allowNull: true,
   },
 }, {
@@ -26,9 +37,7 @@ const ProyectoUI = sequelize.define('ProyectoUI', {
   modelName: 'ProyectoUI',
 });
 
-// Método estático para definir las asociaciones
 ProyectoUI.associate = function(models) {
-  // Un ProyectoUI tiene muchos usuarios
   ProyectoUI.hasMany(models.User, { foreignKey: 'proyectoId' });
 };
 
