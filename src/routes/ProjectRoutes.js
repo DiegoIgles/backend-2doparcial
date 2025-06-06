@@ -87,40 +87,82 @@ flutter:
 
 // Generar Dart para una página
 function generatePageDart(page, widgetName) {
-  const widgets = (page.components || []).map((comp) => {
+  let appBarCode = '';
+  const bodyWidgets = [];
+  const hasCheckbox = (page.components || []).some(comp => comp.type === 'Checkbox');
+
+  for (const comp of page.components || []) {
     switch (comp.type) {
       case 'Container':
-        return `Positioned(left: ${comp.position.x}, top: ${comp.position.y}, child: SizedBox(width: ${comp.size.width}, height: ${comp.size.height}, child: Container(color: ${jsToFlutterColor(comp.style.color)}))),`;
+        bodyWidgets.push(`Positioned(left: ${comp.position.x}, top: ${comp.position.y}, child: SizedBox(width: ${comp.size.width}, height: ${comp.size.height}, child: Container(color: ${jsToFlutterColor(comp.style.color)}))),`);
+        break;
       case 'Text':
-        return `Positioned(left: ${comp.position.x}, top: ${comp.position.y}, child: Text('${comp.props.text}', style: TextStyle(fontSize: ${comp.props.fontSize || 16}, color: ${jsToFlutterColor(comp.style.color)}))),`;
+        bodyWidgets.push(`Positioned(left: ${comp.position.x}, top: ${comp.position.y}, child: Text('${comp.props.text}', style: TextStyle(fontSize: ${comp.props.fontSize || 16}, color: ${jsToFlutterColor(comp.style.color)}))),`);
+        break;
       case 'Button':
-        return `Positioned(left: ${comp.position.x}, top: ${comp.position.y}, child: ElevatedButton(onPressed: () {}, child: Text('${comp.props.text || 'Botón'}'))),`;
+        bodyWidgets.push(`Positioned(left: ${comp.position.x}, top: ${comp.position.y}, child: ElevatedButton(onPressed: () {}, child: Text('${comp.props.text || 'Botón'}'))),`);
+        break;
       case 'Input':
-        return `Positioned(left: ${comp.position.x}, top: ${comp.position.y}, child: SizedBox(width: ${comp.size.width}, child: TextField(decoration: InputDecoration(hintText: '${comp.props.placeholder || ''}')))),`;
+        bodyWidgets.push(`Positioned(left: ${comp.position.x}, top: ${comp.position.y}, child: SizedBox(width: ${comp.size.width}, child: TextField(decoration: InputDecoration(hintText: '${comp.props.placeholder || ''}')))),`);
+        break;
       case 'Checkbox':
-        return `Positioned(left: ${comp.position.x}, top: ${comp.position.y}, child: Checkbox(value: true, onChanged: (val) {})),`;
+        if (hasCheckbox) {
+          bodyWidgets.push(`Positioned(left: ${comp.position.x}, top: ${comp.position.y}, child: Checkbox(value: isChecked, onChanged: (val) { setState(() { isChecked = val ?? false; }); })),`);
+        } else {
+          bodyWidgets.push(`Positioned(left: ${comp.position.x}, top: ${comp.position.y}, child: Checkbox(value: true, onChanged: (val) {})),`);
+        }
+        break;
       case 'Navbar':
-        return `PreferredSize(preferredSize: Size.fromHeight(${comp.size.height}), child: AppBar(title: Text('${page.pageName || 'Navbar'}'))),`;
-      default:
-        return '';
+        appBarCode = `appBar: AppBar(title: Text('${page.pageName || 'Navbar'}')),
+`;
+        break;
     }
-  }).join('\n');
+  }
 
-  return `
+  if (hasCheckbox) {
+    return `
+import 'package:flutter/material.dart';
+
+class ${widgetName} extends StatefulWidget {
+  @override
+  _${widgetName}State createState() => _${widgetName}State();
+}
+
+class _${widgetName}State extends State<${widgetName}> {
+  bool isChecked = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      ${appBarCode}
+      body: Stack(
+        children: [
+          ${bodyWidgets.join('\n')}
+        ],
+      ),
+    );
+  }
+}`;
+  } else {
+    return `
 import 'package:flutter/material.dart';
 
 class ${widgetName} extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(children: [
-        ${widgets}
-      ]),
+      ${appBarCode}
+      body: Stack(
+        children: [
+          ${bodyWidgets.join('\n')}
+        ],
+      ),
     );
   }
+}`;
+  }
 }
-  `;
-}
+
 
 // Generar main.dart con Navigator
 function generateMainWithNavigator(pageRoutes) {
