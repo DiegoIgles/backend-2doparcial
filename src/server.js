@@ -20,7 +20,7 @@ const server = http.createServer(app);
 
 // Habilitar CORS de forma dinámica
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: process.env.FRONTEND_URL || 'https://frontend-2doparcial.vercel.app',
   methods: ['GET', 'POST', 'PUT', 'DELETE']
 }));
 
@@ -35,7 +35,7 @@ app.use('/api/proyecto-clase', proyectoClaseRoutes);
 // Conectar los WebSockets
 const io = socketIo(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: process.env.FRONTEND_URL || 'https://frontend-2doparcial.vercel.app',
     methods: ['GET', 'POST','PUT','DELETE'],
   }
 });
